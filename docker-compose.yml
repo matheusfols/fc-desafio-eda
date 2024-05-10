@@ -1,0 +1,98 @@
+services:
+  app:
+    build:
+      context: .
+    container_name: app
+    platform: linux/amd64
+    entrypoint: dockerize -wait tcp://db:3306 -timeout 60s npm run start
+    tty: true
+    networks:
+      - eda-network
+    ports:
+      - "8081:8080"
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - db
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+
+  db:
+    image: mysql:5.7
+    container_name: db
+    platform: linux/amd64
+    restart: always
+    tty: true
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_ROOT_PASSWORD=${DB_PASS}
+    networks:
+      - eda-network
+
+  zookeeper:
+    image: "confluentinc/cp-zookeeper:latest"
+    container_name: zookeeper
+    ports:
+      - 2181:2181
+    environment:
+      TZ: Sao_Paulo/Brazil
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - eda-network
+
+  kafka:
+    image: "confluentinc/cp-enterprise-kafka:latest"
+    container_name: kafka
+    # entrypoint: dockerize -wait tcp://zookeeper:2181 -timeout 80s
+    depends_on:
+      - zookeeper
+    ports:
+      # Exposes 9092 for external connections to the broker
+      # Use kafka:29092 for connections internal on the docker network
+      # See https://rmoff.net/2018/08/02/kafka-listeners-explained/ for details
+      - '9092:9092'
+    environment:
+      TZ: Sao_Paulo/Brazil
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 100
+      CONFLUENT_METRICS_ENABLE: 'false'
+    networks:
+      - eda-network
+
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:latest
+    hostname: control-center
+    container_name: control-center
+    # entrypoint: dockerize -wait tcp://kafka:29092 -timeout 160s
+    depends_on:
+      - kafka
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'kafka:29092'
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+      PORT: 9021
+    networks:
+      - eda-network
+
+networks:
+  eda-network:
+    driver: bridge

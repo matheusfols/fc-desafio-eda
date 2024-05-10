@@ -1,0 +1,10 @@
+
+import ValidatorInterface from "../../@shared/validator/validator.interface";
+import Client from "../domain/entity/client.entity";
+import ClientYupValidator from "../domain/validator/client.yup.validator";
+
+export default class ClientValidatorFactory {
+  static create(): ValidatorInterface<Client> {
+    return new ClientYupValidator();
+  }
+}
